@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fraud Results</title>
+</head>
+<body>
+
+<h2>Fraud Detection Results</h2>
+
+<p><b>Total Transactions:</b> {{ total }}</p>
+<p><b>Fraud Detected:</b> {{ fraud }}</p>
+
+<hr>
+
+{{ tables|safe }}
+
+<br><br>
+<a href="/">⬅ Go Back</a>
+
+</body>
+</html>
