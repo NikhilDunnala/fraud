@@ -2,7 +2,34 @@
 <html>
 <head>
     <title>Fraud Results</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            margin: 20px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 12px;
+            overflow-x: auto;
+            display: block;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 5px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #333;
+            color: white;
+        }
+    </style>
 </head>
+
 <body>
 
 <h2>Fraud Detection Results</h2>
@@ -12,9 +39,11 @@
 
 <hr>
 
-{{ tables|safe }}
+<div style="overflow-x:auto;">
+    {{ tables|safe }}
+</div>
 
-<br><br>
+<br>
 <a href="/">⬅ Go Back</a>
 
 </body>
