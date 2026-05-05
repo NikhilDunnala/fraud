@@ -5,14 +5,17 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import joblib
 import pandas as pd
 import os
+import traceback
 
 app = Flask(__name__)
 
 # =========================
-# 🔐 CONFIG
+# 🔐 CONFIG (RENDER SAFE)
 # =========================
-app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "secret123")
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "fallback_secret")
+
+# VERY IMPORTANT: Render allows write only in /tmp
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -22,12 +25,15 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 
 # =========================
-# 🤖 LOAD MODELS
+# 🤖 LOAD MODELS (SAFE)
 # =========================
-lr_model  = joblib.load("lr_model.pkl")
-rf_model  = joblib.load("rf_model.pkl")
-xgb_model = joblib.load("xgb_model.pkl")
-scaler    = joblib.load("scaler.pkl")
+try:
+    lr_model  = joblib.load("lr_model.pkl")
+    rf_model  = joblib.load("rf_model.pkl")
+    xgb_model = joblib.load("xgb_model.pkl")
+    scaler    = joblib.load("scaler.pkl")
+except Exception as e:
+    print("Model loading error:", e)
 
 FEATURES = ['Time'] + [f'V{i}' for i in range(1, 29)] + ['Amount']
 
@@ -40,13 +46,11 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(100), unique=True)
     password = db.Column(db.String(200))
 
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
-# Create DB
+# Create DB safely
 with app.app_context():
     db.create_all()
 
@@ -64,8 +68,8 @@ def home():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form["email"]
-        password = request.form["password"]
+        email = request.form.get("email")
+        password = request.form.get("password")
 
         user = User.query.filter_by(email=email).first()
 
@@ -83,12 +87,11 @@ def login():
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        name = request.form["name"]
-        email = request.form["email"]
-        password = generate_password_hash(request.form["password"])
+        name = request.form.get("name")
+        email = request.form.get("email")
+        password = generate_password_hash(request.form.get("password"))
 
         existing_user = User.query.filter_by(email=email).first()
-
         if existing_user:
             flash("Email already exists")
             return redirect("/signup")
@@ -124,14 +127,14 @@ def upload():
 
         df = pd.read_csv(file)
 
-        # Check columns
+        # Check required columns
         missing_cols = [col for col in FEATURES if col not in df.columns]
         if missing_cols:
             return f"❌ Missing columns: {missing_cols}"
 
         X = df[FEATURES].copy()
 
-        # Scale
+        # Scale only Time & Amount
         X[['Time', 'Amount']] = scaler.transform(X[['Time', 'Amount']])
 
         # Predictions
@@ -142,7 +145,6 @@ def upload():
         final_prob = 0.2 * prob_lr + 0.2 * prob_rf + 0.6 * prob_xgb
 
         df['Fraud Probability'] = final_prob
-
         df['Result'] = df['Fraud Probability'].apply(
             lambda x: "FRAUD" if x >= 0.65 else (
                 "UNDER REVIEW" if x >= 0.3 else "LEGIT"
@@ -160,7 +162,7 @@ def upload():
         )
 
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error: {str(e)}<br><pre>{traceback.format_exc()}</pre>"
 
 # =========================
 # ▶️ RUN
