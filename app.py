@@ -13,8 +13,6 @@ app = Flask(__name__)
 # 🔐 CONFIG (RENDER SAFE)
 # =========================
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "fallback_secret")
-
-# VERY IMPORTANT: Render allows write only in /tmp
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -25,7 +23,7 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 
 # =========================
-# 🤖 LOAD MODELS (SAFE)
+# 🤖 LOAD MODELS
 # =========================
 try:
     lr_model  = joblib.load("lr_model.pkl")
@@ -50,7 +48,7 @@ class User(UserMixin, db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Create DB safely
+# Create DB
 with app.app_context():
     db.create_all()
 
@@ -127,14 +125,14 @@ def upload():
 
         df = pd.read_csv(file)
 
-        # Check required columns
+        # Validate columns
         missing_cols = [col for col in FEATURES if col not in df.columns]
         if missing_cols:
             return f"❌ Missing columns: {missing_cols}"
 
         X = df[FEATURES].copy()
 
-        # Scale only Time & Amount
+        # Scale
         X[['Time', 'Amount']] = scaler.transform(X[['Time', 'Amount']])
 
         # Predictions
@@ -154,9 +152,12 @@ def upload():
         total = len(df)
         fraud = (df['Result'] == "FRAUD").sum()
 
+        # ✅ CLEAN TABLE (NO \n + ALL ROWS)
+        table_html = df.to_html(classes='data', index=False).replace("\\n", "")
+
         return render_template(
             "result.html",
-            tables=[df.head(20).to_html(classes='data', index=False)],
+            tables=[table_html],
             total=total,
             fraud=fraud
         )
