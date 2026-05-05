@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fraud Detection</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 6px; color: #f1f5f9; }
+    p.sub { font-size: 0.9rem; color: #94a3b8; margin-bottom: 30px; }
+    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 6px; }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #f1f5f9;
+      font-size: 1rem;
+      margin-bottom: 18px;
+      transition: border 0.2s;
+    }
+    input:focus { outline: none; border-color: #6366f1; }
+    button {
+      width: 100%;
+      padding: 13px;
+      background: #6366f1;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #4f46e5; }
+    .result {
+      margin-top: 28px;
+      padding: 24px;
+      border-radius: 12px;
+      background: #0f172a;
+      border-left: 5px solid;
+    }
+    .verdict {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+    .score-bar-bg {
+      background: #334155;
+      border-radius: 999px;
+      height: 10px;
+      margin-bottom: 18px;
+    }
+    .score-bar {
+      height: 10px;
+      border-radius: 999px;
+      transition: width 0.5s;
+    }
+    .breakdown { font-size: 0.85rem; color: #94a3b8; }
+    .breakdown span { display: block; margin-bottom: 4px; }
+    .hint { font-size: 0.78rem; color: #475569; margin-top: 20px; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🔍 Fraud Detection</h1>
+  <p class="sub">Enter transaction details to check for fraud</p>
+
+  <form method="POST">
+    <label>Time (seconds since first transaction)</label>
+    <input type="number" name="time" placeholder="e.g. 50000" step="any" required>
+
+    <label>V1 (PCA Feature 1)</label>
+    <input type="number" name="v1" placeholder="e.g. -1.35" step="any" required>
+
+    <label>V2 (PCA Feature 2)</label>
+    <input type="number" name="v2" placeholder="e.g. -0.07" step="any" required>
+
+    <label>Amount ($)</label>
+    <input type="number" name="amount" placeholder="e.g. 149.62" step="any" required>
+
+    <button type="submit">Analyze Transaction →</button>
+  </form>
+
+  {% if result %}
+  <div class="result" style="border-color: {{ result.color }}">
+    <div class="verdict" style="color: {{ result.color }}">
+      {% if result.verdict == "FRAUD" %}🚨{% elif result.verdict == "UNDER REVIEW" %}⚠️{% else %}✅{% endif %}
+      {{ result.verdict }}
+    </div>
+    <div class="score-bar-bg">
+      <div class="score-bar"
+           style="width: {{ result.score }}%; background: {{ result.color }}">
+      </div>
+    </div>
+    <div class="breakdown">
+      <span>🔢 Fraud Score: <strong style="color:{{ result.color }}">{{ result.score }}%</strong></span>
+      <span>Logistic Regression: {{ result.lr }}%</span>
+      <span>Random Forest: {{ result.rf }}%</span>
+      <span>XGBoost: {{ result.xgb }}%</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <p class="hint">Scores ≥ 65% = Fraud &nbsp;|&nbsp; 30–65% = Under Review &nbsp;|&nbsp; &lt;30% = Legitimate</p>
+</div>
+</body>
+</html>
