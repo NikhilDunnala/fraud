@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -12,26 +12,46 @@ app = Flask(__name__)
 # =========================
 # 🔐 CONFIG (RENDER SAFE)
 # =========================
-app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "fallback_secret")
+app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "secret123")
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-login_manager = LoginManager()
-login_manager.init_app(app)
+login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
 # =========================
-# 🤖 LOAD MODELS
+# 🤖 LOAD MODELS (SAFE)
 # =========================
+lr_model = None
+rf_model = None
+xgb_model = None
+scaler = None
+
 try:
-    lr_model  = joblib.load("lr_model.pkl")
-    rf_model  = joblib.load("rf_model.pkl")
-    xgb_model = joblib.load("xgb_model.pkl")
-    scaler    = joblib.load("scaler.pkl")
+    lr_model = joblib.load("lr_model.pkl")
+    print("✅ LR loaded")
 except Exception as e:
-    print("Model loading error:", e)
+    print("❌ LR load failed:", e)
+
+try:
+    rf_model = joblib.load("rf_model.pkl")
+    print("✅ RF loaded")
+except Exception as e:
+    print("❌ RF load failed:", e)
+
+try:
+    xgb_model = joblib.load("xgb_model.pkl")
+    print("✅ XGB loaded")
+except Exception as e:
+    print("❌ XGB load failed:", e)
+
+try:
+    scaler = joblib.load("scaler.pkl")
+    print("✅ Scaler loaded")
+except Exception as e:
+    print("❌ Scaler load failed:", e)
 
 FEATURES = ['Time'] + [f'V{i}' for i in range(1, 29)] + ['Amount']
 
@@ -48,7 +68,6 @@ class User(UserMixin, db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Create DB
 with app.app_context():
     db.create_all()
 
@@ -66,12 +85,9 @@ def home():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
+        user = User.query.filter_by(email=request.form.get("email")).first()
 
-        user = User.query.filter_by(email=email).first()
-
-        if user and check_password_hash(user.password, password):
+        if user and check_password_hash(user.password, request.form.get("password")):
             login_user(user)
             return redirect("/")
         else:
@@ -85,17 +101,19 @@ def login():
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        name = request.form.get("name")
         email = request.form.get("email")
-        password = generate_password_hash(request.form.get("password"))
 
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
+        if User.query.filter_by(email=email).first():
             flash("Email already exists")
             return redirect("/signup")
 
-        new_user = User(name=name, email=email, password=password)
-        db.session.add(new_user)
+        user = User(
+            name=request.form.get("name"),
+            email=email,
+            password=generate_password_hash(request.form.get("password"))
+        )
+
+        db.session.add(user)
         db.session.commit()
 
         return redirect("/login")
@@ -118,6 +136,9 @@ def logout():
 @login_required
 def upload():
     try:
+        if scaler is None or (lr_model is None and rf_model is None and xgb_model is None):
+            return "❌ Models not loaded properly. Check logs."
+
         file = request.files.get("file")
 
         if not file or file.filename == "":
@@ -126,21 +147,28 @@ def upload():
         df = pd.read_csv(file)
 
         # Validate columns
-        missing_cols = [col for col in FEATURES if col not in df.columns]
-        if missing_cols:
-            return f"❌ Missing columns: {missing_cols}"
+        missing = [c for c in FEATURES if c not in df.columns]
+        if missing:
+            return f"❌ Missing columns: {missing}"
 
         X = df[FEATURES].copy()
 
         # Scale
         X[['Time', 'Amount']] = scaler.transform(X[['Time', 'Amount']])
 
-        # Predictions
-        prob_lr  = lr_model.predict_proba(X)[:, 1]
-        prob_rf  = rf_model.predict_proba(X)[:, 1]
-        prob_xgb = xgb_model.predict_proba(X)[:, 1]
+        # Predictions (safe fallback if any model missing)
+        probs = []
 
-        final_prob = 0.2 * prob_lr + 0.2 * prob_rf + 0.6 * prob_xgb
+        if lr_model:
+            probs.append(0.2 * lr_model.predict_proba(X)[:, 1])
+
+        if rf_model:
+            probs.append(0.2 * rf_model.predict_proba(X)[:, 1])
+
+        if xgb_model:
+            probs.append(0.6 * xgb_model.predict_proba(X)[:, 1])
+
+        final_prob = sum(probs)
 
         df['Fraud Probability'] = final_prob
         df['Result'] = df['Fraud Probability'].apply(
@@ -148,21 +176,24 @@ def upload():
                 "UNDER REVIEW" if x >= 0.3 else "LEGIT"
             )
         )
-total = len(df)
-fraud = (df['Result'] == "FRAUD").sum()
-review = (df['Result'] == "UNDER REVIEW").sum()
-legit = (df['Result'] == "LEGIT").sum()
 
-table_html = df.to_html(classes='table table-striped table-bordered', index=False).replace("\\n", "")
+        # Counts
+        total = len(df)
+        fraud = (df['Result'] == "FRAUD").sum()
+        review = (df['Result'] == "UNDER REVIEW").sum()
+        legit = (df['Result'] == "LEGIT").sum()
 
-return render_template(
-    "result.html",
-    tables=[table_html],
-    total=total,
-    fraud=fraud,
-    review=review,
-    legit=legit
-)
+        # Clean table
+        table_html = df.to_html(classes='table table-striped table-bordered', index=False).replace("\\n", "")
+
+        return render_template(
+            "result.html",
+            tables=[table_html],
+            total=total,
+            fraud=fraud,
+            review=review,
+            legit=legit
+        )
 
     except Exception as e:
         return f"Error: {str(e)}<br><pre>{traceback.format_exc()}</pre>"
