@@ -148,19 +148,21 @@ def upload():
                 "UNDER REVIEW" if x >= 0.3 else "LEGIT"
             )
         )
+total = len(df)
+fraud = (df['Result'] == "FRAUD").sum()
+review = (df['Result'] == "UNDER REVIEW").sum()
+legit = (df['Result'] == "LEGIT").sum()
 
-        total = len(df)
-        fraud = (df['Result'] == "FRAUD").sum()
+table_html = df.to_html(classes='table table-striped table-bordered', index=False).replace("\\n", "")
 
-        # ✅ CLEAN TABLE (NO \n + ALL ROWS)
-        table_html = df.to_html(classes='data', index=False).replace("\\n", "")
-
-        return render_template(
-            "result.html",
-            tables=[table_html],
-            total=total,
-            fraud=fraud
-        )
+return render_template(
+    "result.html",
+    tables=[table_html],
+    total=total,
+    fraud=fraud,
+    review=review,
+    legit=legit
+)
 
     except Exception as e:
         return f"Error: {str(e)}<br><pre>{traceback.format_exc()}</pre>"
